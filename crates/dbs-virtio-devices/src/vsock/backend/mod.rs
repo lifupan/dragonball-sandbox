@@ -16,6 +16,7 @@ mod unix_stream;
 pub use self::inner::{VsockInnerBackend, VsockInnerConnector, VsockInnerStream};
 pub use self::tcp::VsockTcpBackend;
 pub use self::unix_stream::HybridUnixStreamBackend;
+pub use self::unix_stream::PipeStream;
 pub use self::unix_stream::VsockUnixStreamBackend;
 
 /// The type of vsock backend.

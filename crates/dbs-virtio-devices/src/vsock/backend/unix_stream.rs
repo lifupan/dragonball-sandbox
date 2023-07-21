@@ -7,11 +7,21 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::time::Duration;
 
-use log::info;
+use log::{error, info};
+use nix::errno::Errno;
 use sendfd::RecvWithFd;
 
 use super::super::{Result, VsockError};
 use super::{VsockBackend, VsockBackendType, VsockStream};
+
+pub struct PipeStream(pub std::fs::File);
+
+/*
+pub enum HybridStream {
+    Ustream(UnixStream),
+    Pstream(PipeStream),
+}
+*/
 
 pub struct HybridUnixStreamBackend {
     pub unix_stream: Box<dyn VsockStream>,
@@ -96,6 +106,66 @@ impl VsockStream for UnixStream {
 
     fn recv_data_fd(&self, bytes: &mut [u8], fds: &mut [RawFd]) -> std::io::Result<(usize, usize)> {
         self.recv_with_fd(bytes, fds)
+    }
+}
+
+impl VsockStream for PipeStream {
+    fn backend_type(&self) -> VsockBackendType {
+        VsockBackendType::UnixStream
+    }
+
+    fn set_nonblocking(&mut self, nonblocking: bool) -> std::io::Result<()> {
+        if nonblocking {
+            unsafe {
+                libc::fcntl(self.0.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_read_timeout(&mut self, _dur: Option<Duration>) -> std::io::Result<()> {
+        error!("unsupported!");
+        Err(Errno::ENOPROTOOPT.into())
+    }
+
+    fn set_write_timeout(&mut self, _dur: Option<Duration>) -> std::io::Result<()> {
+        error!("unsupported!");
+        Err(Errno::ENOPROTOOPT.into())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn recv_data_fd(
+        &self,
+        _bytes: &mut [u8],
+        _fds: &mut [RawFd],
+    ) -> std::io::Result<(usize, usize)> {
+        Err(Errno::ENOPROTOOPT.into())
+    }
+}
+
+impl AsRawFd for PipeStream {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0.as_raw_fd()
+    }
+}
+
+impl Read for PipeStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0.read(buf)
+    }
+}
+
+impl Write for PipeStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush()
     }
 }
 
